@@ -19,4 +19,4 @@ jobs:
 
 
       - name: Build and test with Maven
-        run: mvn clean verify --file backendAPI/pom.xml
+        run: mvn clean verify --file BackendAPI/pom.xml
