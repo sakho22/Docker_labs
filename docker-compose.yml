@@ -1,0 +1,41 @@
+services:
+  database:
+    build: ./Database
+
+    container_name: my-database
+
+    environment:
+      POSTGRES_DB: db
+      POSTGRES_USER: usr
+      POSTGRES_PASSWORD: pwd
+
+    networks:
+      - app-network
+
+  backend:
+    build: ./BackendAPI
+
+    container_name: backend
+
+    depends_on:
+      - database
+    networks:
+      - app-network
+
+  reverse-proxy:
+    build: ./HttpServer
+
+    container_name: reverse-proxy
+
+    ports:
+      - "80:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
