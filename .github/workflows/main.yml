@@ -22,7 +22,7 @@ jobs:
         run: mvn clean verify --file BackendAPI/pom.xml
 
       - name: SonarCloud Scan
-        run: mvn -B verify sonar:sonar -Dsonar.projectKey=sakho22_Docker_labs -Dsonar.organization=sakho22 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file BackendAPI/pom.xml
+        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=sakho22_Docker_labs -Dsonar.organization=sakho22 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file BackendAPI/pom.xml
 
   build-and-push-docker-image:
     needs: test-backend
