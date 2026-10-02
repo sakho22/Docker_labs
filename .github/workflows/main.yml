@@ -21,6 +21,9 @@ jobs:
       - name: Build and test with Maven
         run: mvn clean verify --file BackendAPI/pom.xml
 
+      - name: SonarCloud Scan
+        run: mvn -B verify sonar:sonar -Dsonar.projectKey=sakho22_Docker_labs -Dsonar.organization=sakho22 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file BackendAPI/pom.xml
+
   build-and-push-docker-image:
     needs: test-backend
     runs-on: ubuntu-24.04
