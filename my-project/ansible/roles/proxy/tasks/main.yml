@@ -1,0 +1,9 @@
+- name: Run the reverse proxy
+  community.docker.docker_container:
+    name: reverse-proxy
+    image: waraba/tp-reverse-proxy
+    pull: true
+    networks:
+      - name: app-network
+    ports:
+      - "80:80"

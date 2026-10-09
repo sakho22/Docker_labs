@@ -22,7 +22,14 @@ jobs:
         run: mvn clean verify --file BackendAPI/pom.xml
 
       - name: SonarCloud Scan
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=sakho22_Docker_labs -Dsonar.organization=sakho22 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file BackendAPI/pom.xml
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.projectKey=sakho22_Docker_labs
+          -Dsonar.organization=sakho22
+          -Dsonar.host.url=https://sonarcloud.io
+          --file BackendAPI/pom.xml
 
   build-and-push-docker-image:
     needs: test-backend
@@ -54,3 +61,29 @@ jobs:
           context: ./HttpServer
           tags: ${{secrets.DOCKERHUB_USERNAME}}/tp-reverse-proxy:latest
           push: ${{ github.ref == 'refs/heads/main' }}
+
+  deploy:
+    needs: build-and-push-docker-image
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Ansible and the Docker collection
+        run: |
+          ansible --version || pipx install ansible-core
+          ansible-galaxy collection install community.docker
+
+      - name: Set up SSH key and known host
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H mohamed.sakho.takima.school >> ~/.ssh/known_hosts
+
+      - name: Deploy with Ansible
+        working-directory: my-project/ansible
+        run: >
+          ansible-playbook -i inventories/setup.yml playbook.yml
+          -e ansible_ssh_private_key_file=~/.ssh/deploy_key

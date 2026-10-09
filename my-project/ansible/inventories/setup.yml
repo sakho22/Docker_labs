@@ -1,0 +1,8 @@
+all:
+  vars:
+    ansible_user: admin
+    ansible_ssh_private_key_file: /home/waraba/documents/workspaceEfrei/dockerContainers/provided_id_rsa/id_rsa
+  children:
+    prod:
+      hosts:
+        mohamed.sakho.takima.school:

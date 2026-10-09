@@ -1,0 +1,11 @@
+- name: Run the backend API
+  community.docker.docker_container:
+    name: backend
+    image: waraba/tp-devops-simple-api
+    pull: true
+    networks:
+      - name: app-network
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/db
+      SPRING_DATASOURCE_USERNAME: usr
+      SPRING_DATASOURCE_PASSWORD: pwd
