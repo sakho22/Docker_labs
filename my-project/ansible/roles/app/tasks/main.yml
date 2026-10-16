@@ -1,11 +1,22 @@
-- name: Run the backend API
+# The old single backend container is replaced by backend-blue / backend-green
+- name: Remove the old single backend container
   community.docker.docker_container:
     name: backend
+    state: absent
+
+# Two instances of the backend API, load balanced by the reverse proxy
+- name: Run the backend API instances
+  community.docker.docker_container:
+    name: "{{ item }}"
     image: waraba/tp-devops-simple-api
     pull: true
+    restart_policy: unless-stopped
     networks:
       - name: app-network
     env:
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/db
       SPRING_DATASOURCE_USERNAME: usr
       SPRING_DATASOURCE_PASSWORD: pwd
+  loop:
+    - backend-blue
+    - backend-green

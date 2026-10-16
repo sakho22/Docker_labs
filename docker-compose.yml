@@ -12,10 +12,21 @@ services:
     networks:
       - app-network
 
-  backend:
+  # Two instances of the same backend, load balanced by the reverse proxy
+  backend-blue:
     build: ./BackendAPI
 
-    container_name: backend
+    container_name: backend-blue
+
+    depends_on:
+      - database
+    networks:
+      - app-network
+
+  backend-green:
+    build: ./BackendAPI
+
+    container_name: backend-green
 
     depends_on:
       - database
@@ -31,7 +42,8 @@ services:
       - "80:80"
 
     depends_on:
-      - backend
+      - backend-blue
+      - backend-green
 
     networks:
       - app-network

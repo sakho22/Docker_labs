@@ -5,6 +5,9 @@ This repository contains my work for the three DevOps labs (Takima / EFREI):
 1. **Docker** – containerize a 3-tier application (database, backend API, HTTP reverse proxy)
 2. **GitHub Actions** – CI pipeline (build, tests, SonarCloud quality gate) and CD to Docker Hub
 3. **Ansible** – automatic deployment of the whole application (+ front-end) on a remote server
+4. **Going further** – 2 redundant backends with load balancing on the reverse proxy
+
+Parts 1 to 3 describe the project as it was at the end of each lab. In part 4 the single `backend` was replaced by `backend-blue` and `backend-green`.
 
 The application is deployed on: **http://mohamed.sakho.takima.school**
 
@@ -627,6 +630,116 @@ COPY --from=build /opt/front/default.conf /etc/nginx/conf.d/default.conf
 - I also added a `front` step in the CI (build and push of `tp-front`) and a `front` role in Ansible
 
 The front is reachable at **http://mohamed.sakho.takima.school** and the API at **http://mohamed.sakho.takima.school/api/**.
+
+---
+
+# Part 4 – Going further: Load balancing
+
+## Redundancy
+
+Instead of a single backend, the application now runs **2 backend instances**: `backend-blue` and `backend-green`. They use the same image and the same database. I didn't go further than 2 because the server doesn't have unlimited resources, and each Spring Boot instance uses a fair amount of memory.
+
+**Docker Compose** (dev): the `backend` service is replaced by two services built from the same folder:
+
+```yaml
+backend-blue:
+  build: ./BackendAPI
+  container_name: backend-blue
+  depends_on:
+    - database
+  networks:
+    - app-network
+
+backend-green:
+  build: ./BackendAPI
+  container_name: backend-green
+  depends_on:
+    - database
+  networks:
+    - app-network
+```
+
+**Ansible** (prod): the `app` role starts both containers with a `loop`. It also removes the old `backend` container, so it doesn't keep running on the server:
+
+```yaml
+- name: Remove the old single backend container
+  community.docker.docker_container:
+    name: backend
+    state: absent
+
+- name: Run the backend API instances
+  community.docker.docker_container:
+    name: "{{ item }}"
+    image: waraba/tp-devops-simple-api
+    pull: true
+    restart_policy: unless-stopped
+    networks:
+      - name: app-network
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/db
+      SPRING_DATASOURCE_USERNAME: usr
+      SPRING_DATASOURCE_PASSWORD: pwd
+  loop:
+    - backend-blue
+    - backend-green
+```
+
+The CI didn't need any change: both instances use the same `tp-devops-simple-api` image.
+
+## Load balancing with mod_proxy_balancer
+
+In `HttpServer/httpd.conf`, I loaded the balancer modules and replaced the single backend with a balancer group of 2 members:
+
+```apache
+LoadModule proxy_balancer_module modules/mod_proxy_balancer.so
+LoadModule slotmem_shm_module modules/mod_slotmem_shm.so
+LoadModule lbmethod_byrequests_module modules/mod_lbmethod_byrequests.so
+
+<VirtualHost *:80>
+ProxyPreserveHost On
+
+<Proxy "balancer://backend-cluster">
+    BalancerMember "http://backend-blue:8080" retry=5
+    BalancerMember "http://backend-green:8080" retry=5
+    ProxySet lbmethod=byrequests
+</Proxy>
+
+ProxyPass /api/ balancer://backend-cluster/
+ProxyPassReverse /api/ balancer://backend-cluster/
+ProxyPass / http://front:80/
+ProxyPassReverse / http://front:80/
+</VirtualHost>
+```
+
+- `mod_proxy_balancer` adds the `balancer://` group. `mod_slotmem_shm` is the shared memory it needs to store the state of the members. `mod_lbmethod_byrequests` is the algorithm.
+- `lbmethod=byrequests`: requests are spread evenly between the members (round robin).
+- `retry=5`: when a member doesn't answer, Apache stops sending it requests and tries it again after 5 seconds (the default is 60s). Without it, the first time I tested, the proxy got requests while Spring Boot was still starting, and both backends stayed disabled for a full minute.
+
+## Tests (dev environment)
+
+```bash
+docker compose up -d --build
+for i in 1 2 3 4 5 6; do curl -s http://localhost/api/; echo; done
+```
+
+```
+{"id":1,"content":"Hello, World!"}
+{"id":1,"content":"Hello, World!"}
+{"id":2,"content":"Hello, World!"}
+{"id":2,"content":"Hello, World!"}
+{"id":3,"content":"Hello, World!"}
+{"id":3,"content":"Hello, World!"}
+```
+
+The greeting endpoint has a counter kept in memory in each instance. The ids go 1, 1, 2, 2, 3, 3, which shows that the requests alternate between the two backends.
+
+I also tested the redundancy: with `docker stop backend-blue`, every request still returned `200` (served by `backend-green`). After `docker start backend-blue`, it came back in the rotation automatically, with its counter starting again at 1.
+
+## Why can we load balance so easily?
+
+Because the backend is **stateless**. It doesn't keep any user session or data in memory: everything is stored in PostgreSQL, which both instances share. So any instance can answer any request, and the proxy can send each request to a different backend.
+
+If the application stored sessions in memory (e.g. a logged-in user), we would need **sticky sessions**: the proxy would always send a given user to the same backend (with `stickysession=` in `mod_proxy_balancer`), or the sessions would have to be moved to a shared store such as Redis. The only "state" in our backend is the greeting counter, which is why each instance shows its own value.
 
 ---
 
